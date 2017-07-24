@@ -1,0 +1,11 @@
+hg38_driver_genes = [Driver_Gene("TP53", "17", 7661779, 7687550, true),
+                     Driver_Gene("SMAD4", "18", 51028394, 51085045, true),
+                     Driver_Gene("HNF4A", "20", 44355700, 44434596, false),
+                     Driver_Gene("APC", "5", 112707498, 112846239, true),
+                     Driver_Gene("KLF5", "13", 73054976, 73077542, false),
+                     Driver_Gene("USP12", "13", 27066142, 27171896, false),
+                     Driver_Gene("RUNX3", "1", 24899511, 24965157, true),
+                     Driver_Gene("TLR3", "4", 186069152, 186088069, true),
+                     Driver_Gene("SOX9", "17", 72121020, 72126420, true),
+                     Driver_Gene("MYC", "8", 127735434, 127741434, false),
+                     Driver_Gene("BMPR1A", "10", 86755786, 86932838, true)]

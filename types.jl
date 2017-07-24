@@ -13,6 +13,7 @@ end
 
 struct Chromosome
     size::UInt32
+    centromere_pos::UInt32
     drivers::Array{Driver_Locus, 1}
 end
 

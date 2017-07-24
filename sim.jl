@@ -12,31 +12,18 @@ const s = 0.004 # average selective growth advantage of a driver mutation (Bozic
 const u = 0.01 # probability of chromosomal event per chromosome per cell division (Lengauer/Kinzler/Vogelstein 1997, doi:10.1038/386623a0)
 
 include("types.jl")
-include("whole_chromosome_duplication.jl")
-include("chromosome_end_deletion.jl")
-
-# TODO fill in with relevant genes
-hg38_driver_genes = [Driver_Gene("TP53", "17", 7661779, 7687550, true),
-                     Driver_Gene("SMAD4", "18", 51028394, 51085045, true),
-                     Driver_Gene("HNF4A", "20", 44355700, 44434596, false),
-                     Driver_Gene("APC", "5", 112707498, 112846239, true),
-                     Driver_Gene("KLF5", "13", 73054976, 73077542, false),
-                     Driver_Gene("USP12", "13", 27066142, 27171896, false),
-                     Driver_Gene("RUNX3", "1", 24899511, 24965157, true),
-                     Driver_Gene("TLR3", "4", 186069152, 186088069, true),
-                     Driver_Gene("SOX9", "17", 72121020, 72126420, true),
-                     Driver_Gene("MYC", "8", 127735434, 127741434, false),
-                     Driver_Gene("BMPR1A", "10", 86755786, 86932838, true)]
-
-hg38_chromosome_sizes = Dict("1" => 248956422, "2" => 242193529, "3" => 198295559, "4" => 190214555, "5" => 181538259, "6" => 170805979, "7" => 159345973, "8" => 145138636, "9" => 138394717, "10" => 133797422, "11" => 135086622, "12" => 133275309, "13" => 114364328, "14" => 107043718, "15" => 101991189, "16" => 90338345, "17" => 83257441, "18" => 80373285, "19" => 58617616, "20" => 64444167, "21" => 46709983, "22" => 50818468, "X" => 156040895, "Y" => 57227415)
+include("genes.jl")
+include("chromosome_data.jl")
+include("reporting.jl")
+for file in filter(x -> endswith(x, ".jl"), readdir("operations"))
+    include("operations/$file")
+end
 
 function chromosome_mutation(cell::Cell, chromosome::Chromosome, push_c1!::Function, push_c2!::Function)
     # Different chromosomal operations go here
-    # TODO insertions (keep track which chromosome they are attached to)
-    # TODO tandem fusion
-    # TODO deletions between two double-strand breaks
-    ops = [(0.20, whole_chromosome_duplication),
-           (0.60, chromosome_start_deletion),
+    ops = [(0.25, whole_chromosome_duplication),
+           (0.50, chromosome_start_deletion),
+           (0.75, chromosome_mid_deletion),
            (1.00, chromosome_end_deletion)]
     p = rand()
     for (lim, op) in ops
@@ -116,88 +103,6 @@ function get_next_generation(pop::Population)
     return Population(a), max_k_idx
 end
 
-function print_chromosomes(segments)
-    println("--")
-    println("Final chromosomal layout of the cell with the highest fitness:")
-    idx = 1
-    for chr in segments
-        print("Chromosome $idx:")
-        for seg in chr
-            print(" [$(seg[1]): $(seg[2])-$(seg[3])]")
-        end
-        println("")
-        idx += 1
-    end
-end
-
-function print_mutation(idx, old_seg, new_seg)
-    print("Chromosome $idx: ")
-    for seg in old_seg
-        print(" [$(seg[1]): $(seg[2])-$(seg[3])]")
-    end
-    print(" ->")
-    for seg in new_seg
-        print(" [$(seg[1]): $(seg[2])-$(seg[3])]")
-    end
-end
-
-function get_segments_for_clean_cell()
-    segments = Array{Array{Tuple{String, UInt32, UInt32}, 1}, 1}()
-    for i in 1:22
-        push!(segments, [("$i", 0, hg38_chromosome_sizes["$i"])])
-        push!(segments, [("$i", 0, hg38_chromosome_sizes["$i"])])
-    end
-    push!(segments, [("X", 0, hg38_chromosome_sizes["X"])])
-    push!(segments, [("Y", 0, hg38_chromosome_sizes["Y"])])
-    return segments
-end
-
-function print_cell(cell::Cell)
-    segments = get_segments_for_clean_cell()
-
-    for m in cell.mutation_list
-        push_count = 0
-        printed_something = false
-        function push_seg!(s::Array{Tuple{String, UInt32, UInt32}, 1})
-            if push_count == 0
-                if s != segments[m.chromosome_idx]
-                    print_mutation(m.chromosome_idx, segments[m.chromosome_idx], s)
-                    printed_something = true
-                end
-                segments[m.chromosome_idx] = s
-            else
-                if printed_something == false
-                    print_mutation(m.chromosome_idx, segments[m.chromosome_idx], segments[m.chromosome_idx])
-                    printed_something = true
-                end
-                print(",")
-                for seg in s
-                    print(" [$(seg[1]): $(seg[2])-$(seg[3])]")
-                end
-                splice!(segments, m.chromosome_idx+1:m.chromosome_idx, [copy(s)])
-            end
-            push_count += 1
-        end
-
-        # Dispatch to chromosomal operation -specific refseq segment generator function, which should call push_seq! with
-        # an array of ("reference chromosome name", start_bp_of_segment, end_bp_of_segment) tuples for each chromosome
-        # that was created. Second parameter indicates whether this was the first or second output cell of the chromosomal
-        # mutation operation, and the third parameter contains any data that was returned by the mutation operation.
-        m.op(copy(segments[m.chromosome_idx]), m.cell1, m.data, push_seg!)
-
-        if push_count == 0
-            print("Chromosome $(m.chromosome_idx) deleted")
-            printed_something = true
-            splice!(segments, m.chromosome_idx:m.chromosome_idx)
-        end
-        if printed_something == true
-            println("")
-        end
-    end
-    
-    print_chromosomes(segments)
-end
-
 function simulate(pop::Population)
     i = 1
     max_k_idx = 1
@@ -216,15 +121,26 @@ function simulate(pop::Population)
     return cell_count
 end
 
+function get_centromere_pos(chr)
+    ppos = 0
+    for (pos, loc) in hg38_cytobands[chr]
+        if(loc[1] == 'q')
+            return ppos
+        end
+        ppos = pos
+    end
+end
+
 function get_clean_cell(driver_genes)
     chromosomes = Array{Chromosome, 1}(0)
     for i in 1:22
-        push!(chromosomes, Chromosome(hg38_chromosome_sizes["$i"], driver_genes["$i"]))
-        push!(chromosomes, Chromosome(hg38_chromosome_sizes["$i"], driver_genes["$i"]))
+        cpos = get_centromere_pos("$i")
+        push!(chromosomes, Chromosome(hg38_chromosome_sizes["$i"], cpos, driver_genes["$i"]))
+        push!(chromosomes, Chromosome(hg38_chromosome_sizes["$i"], cpos, driver_genes["$i"]))
     end
 
-    push!(chromosomes, Chromosome(hg38_chromosome_sizes["X"], driver_genes["X"]))
-    push!(chromosomes, Chromosome(hg38_chromosome_sizes["Y"], driver_genes["Y"]))
+    push!(chromosomes, Chromosome(hg38_chromosome_sizes["X"], get_centromere_pos("X"), driver_genes["X"]))
+    push!(chromosomes, Chromosome(hg38_chromosome_sizes["Y"], get_centromere_pos("Y"), driver_genes["Y"]))
 
     # start with CIN and count it as a driver mutation
     return Cell(chromosomes, 1, [])
