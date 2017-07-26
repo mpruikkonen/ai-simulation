@@ -21,9 +21,13 @@ end
 
 function chromosome_mutation(cell::Cell, chromosome::Chromosome, push_c1!::Function, push_c2!::Function)
     # Different chromosomal operations go here
-    ops = [(0.25, whole_chromosome_duplication),
-           (0.50, chromosome_start_deletion),
-           (0.75, chromosome_mid_deletion),
+    # TODO whole genome duplication
+    # TODO chromosome loss
+    # TODO end insert
+    ops = [(0.20, whole_chromosome_duplication),
+           (0.40, chromosome_tandem_duplication),
+           (0.60, chromosome_start_deletion),
+           (0.80, chromosome_mid_deletion),
            (1.00, chromosome_end_deletion)]
     p = rand()
     for (lim, op) in ops
@@ -64,7 +68,6 @@ function cell_division(cell::Cell)
             # as many times as the operation produces chromosomes for each child. Return values should
             # contain the number of fitness-increasing driver mutations that occurred for each child
             # (can be negative). Third return value is passed as-is to refseq segment generation.
-            # TODO whole genome duplication / multiple-chromosome events?
             (op, (mc1, mc2, data)) = chromosome_mutation(cell, chromosome, push_c1!, push_c2!)
 
             mcount1 += mc1; mcount2 += mc2
@@ -169,14 +172,6 @@ function run_sim_from_single_cell()
             println("Crypt died, trying again")
         end
     end
-end
-
-function run_sim_for_10m_crypts()
-    # TODO? try running with the 10m crypts of the human colon with 1 or 1-4 cell effective populations per crypt
-    # - maybe try to model the sequential breakdown of the 1-4 cell limit of the stem cell population as well as the cancer progresses
-    # - could simulate just the fraction of the crypts estimated to have CIN or other initial event and introduce new crypts as time/generations progress
-    # - could also try to introduce dedifferentiating cells from the differentiated (non-simulated) crypt population back to the simulated cells somehow if data exists on the frequency of such events at different stages of mutation accumulation
-    # - set initial conditions for familial adenomatous polyposis and improve simulation by trying to get results to agree with experimental data for that as well?
 end
 
 pop = run_sim_from_single_cell()
