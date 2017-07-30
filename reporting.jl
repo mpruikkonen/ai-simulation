@@ -1,17 +1,81 @@
-function write_bed(regions)
+function write_bed_file(chr_regions)
     fname = options["-o"]
     open(fname, "w") do f
         if haskey(options, "--std-bed")
-            for (key, val) in regions
-                write(f, "chr$(key[1])\t$(key[2])\t$(key[3])\t\t$(val[1])\n")
+            for chr in sort(collect(keys(chr_regions)))
+                for r in chr_regions[chr]
+                    write(f, "chr$chr\t$(r[1])\t$(r[2])\t\t$(r[3])\n")
+                end
             end
         else
-            for (key, val) in regions
-                write(f, "chr$(key[1])\t$(key[2])\t$(key[3])\t\t$(val[1])\t$(val[2])\t$(val[3])\n")
+            for chr in sort(collect(keys(chr_regions)))
+                for r in chr_regions[chr]
+                    write(f, "chr$chr\t$(r[1])\t$(r[2])\t\t$(r[3])\t$(r[4])\t$(r[5])\n")
+                end
             end
         end
     end
     println("Wrote BED file to '$fname'")
+end
+
+function add_seg_end!(regions, idx, cur_pos, seg_end, p)
+    while idx <= size(regions)[1]
+        if regions[idx][1] > cur_pos
+            if regions[idx][1] >= seg_end
+                splice!(regions, idx:idx-1, [(cur_pos, seg_end, 1, p == 'f' ? 1 : 0, p == 'm' ? 1 : 0)])
+                return
+            else
+                splice!(regions, idx:idx-1, [(cur_pos, regions[idx][1], 1, p == 'f' ? 1 : 0, p == 'm' ? 1 : 0)])
+                idx += 1
+                cur_pos = regions[idx][1]
+            end
+        end
+        if regions[idx][2] >= seg_end
+            if regions[idx][2] > seg_end
+                splice!(regions, idx+1:idx, [(seg_end, regions[idx][2], regions[idx][3], regions[idx][4], regions[idx][5])])
+            end
+            regions[idx] = (cur_pos, seg_end, regions[idx][3]+1, regions[idx][4] + (p == 'f' ? 1 : 0), regions[idx][5] + (p == 'm' ? 1 : 0))
+            return
+        else
+            regions[idx] = (cur_pos, regions[idx][2], regions[idx][3]+1, regions[idx][4] + (p == 'f' ? 1 : 0), regions[idx][5] + (p == 'm' ? 1 : 0))
+            cur_pos = regions[idx][2]
+        end
+        idx += 1
+    end
+    push!(regions, (cur_pos, seg_end, 1, p == 'f' ? 1 : 0, p == 'm' ? 1 : 0))
+end
+
+function add_seg!(regions, seg_start, seg_end, p)
+    idx = 1
+    while idx <= size(regions)[1]
+        if regions[idx][2] > seg_start
+            if regions[idx][1] <= seg_start
+                if regions[idx][1] < seg_start
+                    splice!(regions, idx:idx-1, [(regions[idx][1], seg_start, regions[idx][3], regions[idx][4], regions[idx][5])])
+                    idx += 1
+                end
+                if regions[idx][2] > seg_end
+                    splice!(regions, idx+1:idx, [(seg_end, regions[idx][2], regions[idx][3], regions[idx][4], regions[idx][5])])
+                    regions[idx] = (seg_start, seg_end, regions[idx][3]+1, regions[idx][4] + (p == 'f' ? 1 : 0), regions[idx][5] + (p == 'm' ? 1 : 0))
+                else
+                    regions[idx] = (seg_start, regions[idx][2], regions[idx][3]+1, regions[idx][4] + (p == 'f' ? 1 : 0), regions[idx][5] + (p == 'm' ? 1 : 0))
+                    if regions[idx][2] < seg_end
+                        add_seg_end!(regions, idx+1, regions[idx][2], seg_end, p)
+                    end
+                end
+            else
+                if regions[idx][1] >= seg_end
+                    splice!(regions, idx:idx-1, [(seg_start, seg_end, 1, p == 'f' ? 1 : 0, p == 'm' ? 1 : 0)])
+                else
+                    splice!(regions, idx:idx-1, [(seg_start, regions[idx][1], 1, p == 'f' ? 1 : 0, p == 'm' ? 1 : 0)])
+                    add_seg_end!(regions, idx+1, regions[idx+1][1], seg_end, p)
+                end
+            end
+            return
+        end
+        idx += 1
+    end
+    push!(regions, (seg_start, seg_end, 1, p == 'f' ? 1 : 0, p == 'm' ? 1 : 0))
 end
 
 function get_region_name(chr, position)
@@ -23,7 +87,7 @@ function get_region_name(chr, position)
 end
 
 function print_chromosome_regions(segments)
-    regions = Dict{Tuple{String, Int, Int}, Tuple{Int, Int, Int}}()
+    chr_regions = Dict{String, Array{Tuple{Int, Int, Int, Int, Int}}}()
     println("--")
     println("Final karyotype of the cell with the highest fitness:")
     idx = 1
@@ -37,18 +101,12 @@ function print_chromosome_regions(segments)
         print(" (")
         for seg in chr
             c = seg[1][2:end]
-            tcount = fcount = mcount = 0
-            if haskey(regions, ("$c", seg[2], seg[3]))
-                (tcount, fcount, mcount) = regions[("$c", seg[2], seg[3])]
-            end
-            tcount += 1
-            if(seg[1][1] == 'f')
-                fcount += 1
+            parent = seg[1][1]
+            if haskey(chr_regions, "$c")
+                add_seg!(chr_regions["$c"], seg[2], seg[3], parent)
             else
-                mcount += 1
+                chr_regions["$c"] = [(seg[2], seg[3], 1, parent == 'f' ? 1 : 0, parent == 'm' ? 1 : 0)]
             end
-            regions[("$c", seg[2], seg[3])] = (tcount, fcount, mcount)
-
             b = get_region_name(c, seg[2])
             e = get_region_name(c, seg[3])
             scount -= 1
@@ -60,7 +118,7 @@ function print_chromosome_regions(segments)
         end
         idx += 1
     end
-    write_bed(regions)
+    write_bed_file(chr_regions)
 end
 
 function print_mutation(idx, old_seg, new_seg)
