@@ -11,6 +11,8 @@
 const s = 0.004 # average selective growth advantage of a driver mutation (Bozic/Vogelstein/Nowak 2010, doi:10.1073/pnas.1010978107)
 const u = 0.01 # probability of chromosomal event per chromosome per cell division (Lengauer/Kinzler/Vogelstein 1997, doi:10.1038/386623a0)
 
+options = Dict("-o" => "out.bed")
+
 include("types.jl")
 include("genes.jl")
 include("chromosome_data.jl")
@@ -111,12 +113,13 @@ function simulate(pop::Population)
     max_k_idx = 1
     cell_count = 1
     while cell_count > 0 && cell_count < 10000
-        println("Generation $i, $cell_count cells, maximum number of driver mutations in a cell: $(pop.individuals[max_k_idx].k)")
+        print("\rGeneration $i, $cell_count cells, maximum number of driver mutations in a cell: $(pop.individuals[max_k_idx].k)")
         (pop, max_k_idx) = get_next_generation(pop)
         cell_count = size(pop.individuals)[1]
         i += 1
     end
     if cell_count > 0
+        println("")
         println("--")
         println("Cell with highest fitness evolved through the following chromosomal events:")
         print_cell(pop.individuals[max_k_idx])
@@ -169,10 +172,40 @@ function run_sim_from_single_cell()
             println("Done")
             break
         else
+            println("")
             println("Crypt died, trying again")
         end
     end
 end
 
-pop = run_sim_from_single_cell()
+function print_help()
+    print("""
+Usage:
+  sim.jl [OPTION]...
 
+Options:
+  -h, --help         print this help
+  --std-bed          do not output parent-specific counts to BED file
+  -o, --output file  name of BED output file (default: '$(options["-o"])')
+""")
+    quit()
+end
+
+function parse_cmdline()
+    while !isempty(ARGS)
+        a = shift!(ARGS)
+        if a == "--std-bed"
+            options[a] = ""
+        elseif (a == "--output" || a == "-o") && !isempty(ARGS)
+            options["-o"] = shift!(ARGS)
+        elseif a == "--help" || a == "-h"
+            print_help()
+        else
+            println("Invalid option '$a'")
+            print_help()
+        end
+    end
+end
+
+parse_cmdline()
+pop = run_sim_from_single_cell()
