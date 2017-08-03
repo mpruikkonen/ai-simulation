@@ -58,15 +58,17 @@ end
 function simulate(pop::Population)
     i = 1
     max_k_idx = 1
+    max_k = 1
     cell_count = 1
     mutation_count = 0
-    while cell_count > 0 && cell_count < 10000
-        print("\rGeneration $i, $cell_count cells, maximum k is $(pop.individuals[max_k_idx].k) in a cell having $mutation_count mutation events")
+    while cell_count > 0 && mutation_count < 80
         (pop, max_k_idx) = get_next_generation(pop)
         cell_count = size(pop.individuals)[1]
         if cell_count > 0
+            max_k = pop.individuals[max_k_idx].k
             mutation_count = size(pop.individuals[max_k_idx].mutation_list)[1]
         end
+        print("\rGeneration $i, $cell_count cells, maximum k was $max_k in a cell having $mutation_count mutation events  ")
         i += 1
     end
     if cell_count > 0
