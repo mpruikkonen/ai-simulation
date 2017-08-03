@@ -16,76 +16,23 @@ options = Dict("-o" => "out.bed")
 include("types.jl")
 include("genes.jl")
 include("chromosome_data.jl")
+include("chromosome_operations.jl")
 include("reporting.jl")
-for file in filter(x -> endswith(x, ".jl"), readdir("operations"))
-    include("operations/$file")
-end
-
-function chromosome_mutation(cell::Cell, chromosome::Chromosome, push_c1!::Function, push_c2!::Function)
-    # Different chromosomal operations go here
-    # TODO whole genome duplication
-    # TODO chromosome loss
-    # TODO end insert
-    ops = [(0.20, whole_chromosome_duplication),
-           (0.40, chromosome_tandem_duplication),
-           (0.60, chromosome_start_deletion),
-           (0.80, chromosome_mid_deletion),
-           (1.00, chromosome_end_deletion)]
-    p = rand()
-    for (lim, op) in ops
-        if(p < lim)
-            return op, op(cell, chromosome, push_c1!, push_c2!)
-        end
-    end
-end
 
 function cell_division(cell::Cell)
-    new_chromosomes1 = Array{Chromosome, 1}(0)
-    new_chromosomes2 = Array{Chromosome, 1}(0)
-    new_ml1 = copy(cell.mutation_list)
-    new_ml2 = copy(cell.mutation_list)
-    mcount1 = mcount2 = 0
-    chromosome_idx1 = chromosome_idx2 = 1
-
-    for chromosome in cell.chromosomes
-        # Assume we start with CIN, so chromosomal event probability u = 10^-2 per
-        # chromosome per cell division according to Lengauer/Kinzler/Vogelstein (1997).
-        # The assumption of initial/very early CIN in CRC is reasonable according to Nowak's
-        # Evolutionary Dynamics (chapter 12.5), but backed by little experimental evidence
-        # and the effective populations in crypts are maybe not as small as Nowak speculated
-        # if dedifferentiation plays a role, so we probably want to simulate other initial
-        # scenarios as well at some point.
-        if(rand() < u)
-            cidx1_increase = cidx2_increase = 0
-            function push_c1!(chromosome::Chromosome)
-                push!(new_chromosomes1, chromosome)
-                cidx1_increase += 1
-            end
-            function push_c2!(chromosome::Chromosome)
-                push!(new_chromosomes2, chromosome)
-                cidx2_increase += 1
-            end
-
-            # Dispatch to operation-specific functions that should call the provided push_c callbacks
-            # as many times as the operation produces chromosomes for each child. Return values should
-            # contain the number of fitness-increasing driver mutations that occurred for each child
-            # (can be negative). Third return value is passed as-is to refseq segment generation.
-            (op, (mc1, mc2, data)) = chromosome_mutation(cell, chromosome, push_c1!, push_c2!)
-
-            mcount1 += mc1; mcount2 += mc2
-            push!(new_ml1, Mutation(op, chromosome_idx1, true, data))
-            push!(new_ml2, Mutation(op, chromosome_idx2, false, data))
-            chromosome_idx1 += cidx1_increase
-            chromosome_idx2 += cidx2_increase
-        else
-            push!(new_chromosomes1, chromosome)
-            push!(new_chromosomes2, chromosome)
-            chromosome_idx1 += 1
-            chromosome_idx2 += 1
-        end
+    # Assume we start with CIN, so chromosomal event probability u = 10^-2 per
+    # chromosome per cell division according to Lengauer/Kinzler/Vogelstein (1997).
+    # The assumption of initial/very early CIN in CRC is reasonable according to Nowak's
+    # Evolutionary Dynamics (chapter 12.5), but backed by little experimental evidence
+    # and the effective populations in crypts are maybe not as small as Nowak speculated
+    # if dedifferentiation plays a role, so we probably want to simulate other initial
+    # scenarios as well at some point.
+    ccount = size(cell.chromosomes)[1]
+    if rand() >= (1-u)^ccount
+        return chromosome_mutation(cell), cell
+    else
+        return cell, cell
     end
-
-    return Cell(new_chromosomes1, cell.k+mcount1, new_ml1), Cell(new_chromosomes2, cell.k+mcount2, new_ml2)
 end
 
 function get_next_generation(pop::Population)
@@ -112,10 +59,14 @@ function simulate(pop::Population)
     i = 1
     max_k_idx = 1
     cell_count = 1
+    mutation_count = 0
     while cell_count > 0 && cell_count < 10000
-        print("\rGeneration $i, $cell_count cells, maximum number of driver mutations in a cell: $(pop.individuals[max_k_idx].k)")
+        print("\rGeneration $i, $cell_count cells, maximum k is $(pop.individuals[max_k_idx].k) in a cell having $mutation_count mutation events")
         (pop, max_k_idx) = get_next_generation(pop)
         cell_count = size(pop.individuals)[1]
+        if cell_count > 0
+            mutation_count = size(pop.individuals[max_k_idx].mutation_list)[1]
+        end
         i += 1
     end
     if cell_count > 0

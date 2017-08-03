@@ -1,20 +1,33 @@
-function whole_chromosome_duplication(cell::Cell, chromosome::Chromosome, push_c1!::Function, push_c2!::Function)
-    push_c1!(chromosome)
-    push_c1!(chromosome)
-    push_c2!(chromosome)
+function whole_chromosome_duplication(cell::Cell)
+    cidx = sample_chromosome(cell)
+    chromosome = cell.chromosomes[cidx]
     mcount = 0
     for driver in chromosome.drivers
-        if driver.gene.suppressor == false
-            mcount += 1 # TODO do we want to count just the first duplication of an oncogene instead of each one?
-        end
+        mcount += driver.gene.suppressor == false ? 1 : -1
     end
-    return mcount, 0, 0
+    new_chromosomes = copy(cell.chromosomes)
+    splice!(new_chromosomes, cidx+1:cidx, [new_chromosomes[cidx]])
+    return new_chromosomes, cell.k+mcount, cidx
 end
 
-function whole_chromosome_duplication(segments::Array{Tuple{String, UInt32, UInt32}, 1}, cell1::Bool, data, push_seg!::Function)
-    push_seg!(segments)
-    if cell1 == true
-        push_seg!(segments)
+function whole_chromosome_loss(cell::Cell)
+    cidx = sample_chromosome(cell)
+    chromosome = cell.chromosomes[cidx]
+    mcount = 0
+    for driver in chromosome.drivers
+        mcount += driver.gene.suppressor == true ? 1 : -1
     end
+    new_chromosomes = copy(cell.chromosomes)
+    splice!(new_chromosomes, cidx)
+    return new_chromosomes, cell.k+mcount, cidx
 end
 
+function whole_chromosome_loss(segments, cidx)
+    println("chr$cidx deleted")
+    splice!(segments, cidx)
+end
+
+function whole_chromosome_duplication(segments, cidx)
+    println("chr$cidx duplicated")
+    splice!(segments, cidx+1:cidx, [copy(segments[cidx])])
+end

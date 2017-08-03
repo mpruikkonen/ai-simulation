@@ -19,14 +19,12 @@ end
 
 struct Mutation
     op::Function
-    chromosome_idx::UInt32
-    cell1::Bool
     data
 end
 
 struct Cell
     chromosomes::Array{Chromosome, 1}
-    k::UInt8 # number of driver mutations, fitness = (1+s)^k
+    k::Int32 # number of driver mutations, fitness = (1+s)^k
     mutation_list::Array{Mutation, 1}
 end
 
