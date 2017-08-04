@@ -61,7 +61,7 @@ function simulate(pop::Population)
     max_k = 1
     cell_count = 1
     mutation_count = 0
-    while cell_count > 0 && mutation_count < 80
+    while cell_count > 0 && mutation_count < 39
         (pop, max_k_idx) = get_next_generation(pop)
         cell_count = size(pop.individuals)[1]
         if cell_count > 0
@@ -72,9 +72,6 @@ function simulate(pop::Population)
         i += 1
     end
     if cell_count > 0
-        println("")
-        println("--")
-        println("Cell with highest fitness evolved through the following chromosomal events:")
         print_cell(pop.individuals[max_k_idx])
     end
     return cell_count

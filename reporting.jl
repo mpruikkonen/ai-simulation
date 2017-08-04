@@ -132,7 +132,31 @@ function get_segments_for_clean_cell()
     return segments
 end
 
+function doublecheck_k(cell::Cell)
+    k::Int32 = 1
+    for gene in hg38_driver_genes
+        if gene.suppressor == true
+            k += 2
+        else
+            k -= 2
+        end
+    end
+    for chr in cell.chromosomes
+        for driver in chr.drivers
+            if driver.gene.suppressor == true
+                k -= 1
+            else
+                k += 1
+            end
+        end
+    end
+    println("")
+    println("--")
+    println("Cell with highest fitness (k = $k) evolved through the following chromosomal events:")
+end
+
 function print_cell(cell::Cell)
+    doublecheck_k(cell)
     segments = get_segments_for_clean_cell()
     for m in cell.mutation_list
         # Dispatch to chromosomal operation -specific refseq segment generator function, which should alter the provided segment
