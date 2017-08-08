@@ -10,8 +10,61 @@
 
 const s = 0.004 # average selective growth advantage of a driver mutation (Bozic/Vogelstein/Nowak 2010, doi:10.1073/pnas.1010978107)
 const u = 0.01 # probability of chromosomal event per chromosome per cell division (Lengauer/Kinzler/Vogelstein 1997, doi:10.1038/386623a0)
+const m = 39 # average number of mutation operations per simulation endpoint (Zack/Beroukhim 2013, doi:10.1038/ng.2760)
 
-options = Dict("-o" => "out.bed")
+function print_help()
+    print("""
+Usage:
+  sim.jl [OPTION]...
+
+Options:
+  -h, --help            print this help
+  --std-bed             do not output parent-specific counts to Bed/BedGraph files
+  -s, --single          run single iteration of simulation from single cell, verbose output (old behavior, useful for debug)
+  -o, --output file     name of Bed/BedGraph output file (default: '$(options["-o"])')
+  -b, --bed-out dir     in addition to BedGraph, output individual Bed files for each simulation iteration to dir
+  -i, --iterations n    number of simulation iterations (default: '$(options["-i"])')
+  -K, --k-iterations n  number of iterations to determine k limit for a simulation iteration (default: '$(options["-K"])')
+  -k, --k-limit n       use precalculated k limit n as simulation stopping condition instead of determining it by simulation
+  -r, --rng-seed n      use a specific rng seed (to replicate an earlier run)
+""")
+    quit()
+end
+
+options = Dict("-o" => "out.bedgraph", "-i" => 1000, "-K" => 50, "-r" => Dates.datetime2epochms(now()))
+
+function parse_cmdline()
+    while !isempty(ARGS)
+        a = shift!(ARGS)
+        if a == "--std-bed"
+            options[a] = ""
+        elseif (a == "--single" || a == "-s")
+            options["-s"] = ""
+        elseif (a == "--output" || a == "-o") && !isempty(ARGS)
+            options["-o"] = shift!(ARGS)
+        elseif (a == "--bed-out" || a == "-b") && !isempty(ARGS)
+            options["-b"] = shift!(ARGS)
+        elseif a == "--iterations" || a == "-i" && !isempty(ARGS)
+            options["-i"] = parse(Int64, shift!(ARGS))
+        elseif a == "--k-iterations" || a == "-K" && !isempty(ARGS)
+            options["-K"] = parse(Int64, shift!(ARGS))
+        elseif a == "--k-limit" || a == "-k" && !isempty(ARGS)
+            options["-k"] = parse(Float64, shift!(ARGS))
+        elseif a == "--rng-seed" || a == "-r" && !isempty(ARGS)
+            options["-r"] = parse(Int64, shift!(ARGS))
+        elseif a == "--help" || a == "-h"
+            print_help()
+        else
+            println("Invalid option '$a'")
+            print_help()
+        end
+    end
+    rngseed = options["-r"]
+    srand(rngseed)
+    println("rng seed is $rngseed")
+end
+
+parse_cmdline()
 
 include("types.jl")
 include("genes.jl")
@@ -55,25 +108,40 @@ function get_next_generation(pop::Population)
     return Population(a), max_k_idx
 end
 
-function simulate(pop::Population)
+function simulate_klimit(pop::Population)
     i = 1
     max_k_idx = 1
     max_k = 1
     cell_count = 1
     mutation_count = 0
-    while cell_count > 0 && mutation_count < 39
+    while mutation_count < m
         (pop, max_k_idx) = get_next_generation(pop)
         cell_count = size(pop.individuals)[1]
-        if cell_count > 0
-            max_k = pop.individuals[max_k_idx].k
-            mutation_count = size(pop.individuals[max_k_idx].mutation_list)[1]
+        if cell_count == 0
+            return 0, 0
         end
-        print("\rGeneration $i, $cell_count cells, maximum k was $max_k in a cell having $mutation_count mutation events  ")
+        max_k = pop.individuals[max_k_idx].k
+        mutation_count = size(pop.individuals[max_k_idx].mutation_list)[1]
         i += 1
     end
-    if cell_count > 0
-        print_cell(pop.individuals[max_k_idx])
+    return cell_count, max_k
+end
+
+function simulate(pop::Population, k_limit, chr_regions, iteration)
+    i = 1
+    max_k_idx = 1
+    max_k = 1
+    cell_count = 1
+    while max_k < k_limit
+        (pop, max_k_idx) = get_next_generation(pop)
+        cell_count = size(pop.individuals)[1]
+        if cell_count == 0
+            return 0
+        end
+        max_k = pop.individuals[max_k_idx].k
+        i += 1
     end
+    print_cell(pop.individuals[max_k_idx], chr_regions, iteration)
     return cell_count
 end
 
@@ -116,46 +184,49 @@ function generate_drivers()
     return d
 end
 
-function run_sim_from_single_cell()
-    while true
-        if simulate(Population([get_clean_cell(generate_drivers())])) > 0
-            println("Done")
-            break
-        else
-            println("")
-            println("Crypt died, trying again")
+function get_avg_k(drivers)
+    i = 1
+    avg_k::Float64 = 0
+    iterations = options["-K"]
+    println("Simulating for $iterations iterations to get average k for maximally fit cell with at least $m mutation operations")
+    while i < iterations
+        (cell_count, k) = simulate_klimit(Population([get_clean_cell(drivers)]))
+        if cell_count > 0
+            print("$k ")
+            avg_k += k
+            i += 1
         end
     end
+    avg_k /= iterations
+    println("/ $iterations = $avg_k")
+    return avg_k
 end
 
-function print_help()
-    print("""
-Usage:
-  sim.jl [OPTION]...
-
-Options:
-  -h, --help         print this help
-  --std-bed          do not output parent-specific counts to BED file
-  -o, --output file  name of BED output file (default: '$(options["-o"])')
-""")
-    quit()
-end
-
-function parse_cmdline()
-    while !isempty(ARGS)
-        a = shift!(ARGS)
-        if a == "--std-bed"
-            options[a] = ""
-        elseif (a == "--output" || a == "-o") && !isempty(ARGS)
-            options["-o"] = shift!(ARGS)
-        elseif a == "--help" || a == "-h"
-            print_help()
-        else
-            println("Invalid option '$a'")
-            print_help()
+function run_sim()
+    chr_regions = Dict{String, Array{Tuple{Int, Int, Int, Int, Int}}}()
+    drivers = generate_drivers()
+    avg_k = haskey(options, "-k") ? options["-k"] : get_avg_k(drivers)
+    iterations = options["-i"]
+    i = 1
+    while i < iterations
+        if simulate(Population([get_clean_cell(drivers)]), avg_k, chr_regions, i) > 0
+            print("\rIteration $i/$iterations")
+            i += 1
         end
     end
+    println("\rSimulated $iterations iterations up to a cell with fitness at least k = $avg_k")
+    write_bedgraph_file(chr_regions)
 end
 
-parse_cmdline()
-pop = run_sim_from_single_cell()
+if haskey(options, "-s")
+    if endswith(options["-o"], ".bedgraph")
+        options["-o"] = options["-o"][1:end-5]
+    end
+    include("debug.jl")
+    run_sim_from_single_cell()
+else
+    if haskey(options, "-b")
+        mkpath(options["-b"])
+    end
+    run_sim()
+end

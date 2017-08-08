@@ -1,21 +1,37 @@
-function write_bed_file(chr_regions)
+function write_bedgraph_file(chr_regions)
     fname = options["-o"]
     open(fname, "w") do f
         if haskey(options, "--std-bed")
             for chr in sort(collect(keys(chr_regions)))
                 for r in chr_regions[chr]
-                    write(f, "chr$chr\t$(r[1])\t$(r[2])\t\t$(r[3])\n")
+                    write(f, "$chr\t$(r[1])\t$(r[2])\t$(r[3])\n")
                 end
             end
         else
             for chr in sort(collect(keys(chr_regions)))
                 for r in chr_regions[chr]
-                    write(f, "chr$chr\t$(r[1])\t$(r[2])\t\t$(r[3])\t$(r[4])\t$(r[5])\n")
+                    write(f, "$chr\t$(r[1])\t$(r[2])\t$(r[3])\t$(r[4])\t$(r[5])\n")
                 end
             end
         end
     end
-    println("Wrote BED file to '$fname'")
+    if haskey(options, "-b")
+        println("""Wrote BedGraph file to '$fname' and Bed files for each iteration to '$(options["-b"])'""")
+    else
+        println("Wrote BedGraph file to '$fname'")
+    end
+end
+
+function write_segments_to_bed_file(segments, iteration)
+    fname = """$(options["-b"])/$(iteration).bed"""
+    open(fname, "w") do f
+        for chr in segments
+            for seg in chr
+                c = seg[1][2:end]
+                write(f, "$c\t$(seg[2])\t$(seg[3])\n")
+            end
+        end
+    end
 end
 
 function add_seg_end!(regions, idx, cur_pos, seg_end, p)
@@ -86,19 +102,9 @@ function get_region_name(chr, position)
     end
 end
 
-function print_chromosome_regions(segments)
-    chr_regions = Dict{String, Array{Tuple{Int, Int, Int, Int, Int}}}()
-    println("--")
-    println("Final karyotype of the cell with the highest fitness:")
+function add_segments_to_chr_regions(segments, chr_regions)
     idx = 1
     for chr in segments
-        print("chr$idx:")
-        scount = 0
-        for seg in chr
-            print(" [$(seg[1]): $(seg[2])-$(seg[3])]")
-            scount += 1
-        end
-        print(" (")
         for seg in chr
             c = seg[1][2:end]
             parent = seg[1][1]
@@ -109,16 +115,9 @@ function print_chromosome_regions(segments)
             end
             b = get_region_name(c, seg[2])
             e = get_region_name(c, seg[3])
-            scount -= 1
-            if scount == 0
-                println("$c$b->$c$e)")
-            else
-                print("$c$b->$c$e ")
-            end
         end
         idx += 1
     end
-    write_bed_file(chr_regions)
 end
 
 function get_segments_for_clean_cell()
@@ -132,31 +131,7 @@ function get_segments_for_clean_cell()
     return segments
 end
 
-function doublecheck_k(cell::Cell)
-    k::Int32 = 1
-    for gene in hg38_driver_genes
-        if gene.suppressor == true
-            k += 2
-        else
-            k -= 2
-        end
-    end
-    for chr in cell.chromosomes
-        for driver in chr.drivers
-            if driver.gene.suppressor == true
-                k -= 1
-            else
-                k += 1
-            end
-        end
-    end
-    println("")
-    println("--")
-    println("Cell with highest fitness (k = $k) evolved through the following chromosomal events:")
-end
-
-function print_cell(cell::Cell)
-    doublecheck_k(cell)
+function print_cell(cell::Cell, chr_regions, iteration)
     segments = get_segments_for_clean_cell()
     for m in cell.mutation_list
         # Dispatch to chromosomal operation -specific refseq segment generator function, which should alter the provided segment
@@ -164,6 +139,9 @@ function print_cell(cell::Cell)
         # that was performed. Second parameter contains any data that was returned by the mutation operation.
         m.op(segments, m.data)
     end
-    print_chromosome_regions(segments)
+    add_segments_to_chr_regions(segments, chr_regions)
+    if haskey(options, "-b")
+        write_segments_to_bed_file(segments, iteration)
+    end
 end
 

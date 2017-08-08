@@ -12,7 +12,7 @@ function whole_genome_duplication(cell::Cell)
 end
 
 function whole_genome_duplication(segments, data)
-    println("genome duplicated")
+    print_msg("genome duplicated")
     cidx = 1
     ccount = size(segments)[1]
     while ccount > 0

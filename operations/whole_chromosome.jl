@@ -23,11 +23,11 @@ function whole_chromosome_loss(cell::Cell)
 end
 
 function whole_chromosome_loss(segments, cidx)
-    println("chr$cidx deleted")
+    print_msg("chr$cidx deleted")
     splice!(segments, cidx)
 end
 
 function whole_chromosome_duplication(segments, cidx)
-    println("chr$cidx duplicated")
+    print_msg("chr$cidx duplicated")
     splice!(segments, cidx+1:cidx, [copy(segments[cidx])])
 end

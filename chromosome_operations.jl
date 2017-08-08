@@ -13,19 +13,29 @@ function sample_chromosome(cell::Cell)
     return chromosome_idx
 end
 
-function print_oldseg(idx, old_seg)
-    print("chr$idx:")
-    for seg in old_seg
-        print(" [$(seg[1]): $(seg[2])-$(seg[3])]")
+if haskey(options, "-s")
+    function print_oldseg(idx, old_seg)
+        print("chr$idx:")
+        for seg in old_seg
+            print(" [$(seg[1]): $(seg[2])-$(seg[3])]")
+        end
     end
-end
 
-function print_newseg(new_seg)
-    print(" ->")
-    for seg in new_seg
-        print(" [$(seg[1]): $(seg[2])-$(seg[3])]")
+    function print_newseg(new_seg)
+        print(" ->")
+        for seg in new_seg
+            print(" [$(seg[1]): $(seg[2])-$(seg[3])]")
+        end
+        println("")
     end
-    println("")
+
+    function print_msg(msg)
+        println(msg)
+    end
+else
+    function print_oldseg(idx, old_seg) end
+    function print_newseg(new_seg) end
+    function print_msg(msg) end
 end
 
 function check_op_psum(ops)
