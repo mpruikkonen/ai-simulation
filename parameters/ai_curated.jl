@@ -2,7 +2,7 @@ const s = 0.004 # average selective growth advantage of a driver mutation (Bozic
 const u = 0.01 # probability of chromosomal event per chromosome per cell division (Lengauer/Kinzler/Vogelstein 1997, doi:10.1038/386623a0)
 const m = 39 # average number of mutation operations per simulation endpoint (Zack/Beroukhim 2013, doi:10.1038/ng.2760)
 
-include("ref/hg38.jl")
+include("ref/hg19.jl")
 
 # 12% of focal amplifications and 26% of focal deletions are telomere-bound according to Zack/Beroukhim 2013 (doi:10.1038/ng.2760),
 # whereas focal amplifications and deletions are relatively balanced (median of 11 amplifications and 12 deletions per sample).
