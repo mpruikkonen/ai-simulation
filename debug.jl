@@ -55,7 +55,7 @@ end
 
 function doublecheck_k(cell::Cell)
     k::Int32 = 1
-    for gene in hg38_driver_genes
+    for gene in driver_genes
         if gene.suppressor == true
             k += 2
         else

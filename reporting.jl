@@ -95,7 +95,7 @@ function add_seg!(regions, seg_start, seg_end, p)
 end
 
 function get_region_name(chr, position)
-    for (pos, loc) in hg38_cytobands[chr]
+    for (pos, loc) in ref_cytobands[chr]
         if(pos >= position)
             return loc
         end
@@ -123,11 +123,11 @@ end
 function get_segments_for_clean_cell()
     segments = Array{Array{Tuple{String, UInt32, UInt32}, 1}, 1}()
     for i in 1:22
-        push!(segments, [("m$i", 0, hg38_chromosome_sizes["$i"])])
-        push!(segments, [("f$i", 0, hg38_chromosome_sizes["$i"])])
+        push!(segments, [("m$i", 0, ref_chromosome_sizes["$i"])])
+        push!(segments, [("f$i", 0, ref_chromosome_sizes["$i"])])
     end
-    push!(segments, [("mX", 0, hg38_chromosome_sizes["X"])])
-    push!(segments, [("fY", 0, hg38_chromosome_sizes["Y"])])
+    push!(segments, [("mX", 0, ref_chromosome_sizes["X"])])
+    push!(segments, [("fY", 0, ref_chromosome_sizes["Y"])])
     return segments
 end
 

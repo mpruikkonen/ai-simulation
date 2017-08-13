@@ -8,10 +8,6 @@
 # language syntax and keywords are different in the earlier versions
 # that are currently available in e.g. Linux distribution packages
 
-const s = 0.004 # average selective growth advantage of a driver mutation (Bozic/Vogelstein/Nowak 2010, doi:10.1073/pnas.1010978107)
-const u = 0.01 # probability of chromosomal event per chromosome per cell division (Lengauer/Kinzler/Vogelstein 1997, doi:10.1038/386623a0)
-const m = 39 # average number of mutation operations per simulation endpoint (Zack/Beroukhim 2013, doi:10.1038/ng.2760)
-
 function print_help()
     print("""
 Usage:
@@ -31,7 +27,7 @@ Options:
     quit()
 end
 
-options = Dict("-o" => "out.bedgraph", "-i" => 1000, "-K" => 50, "-r" => Dates.datetime2epochms(now()))
+options = Dict("-o" => "out.bedgraph", "-i" => 1000, "-K" => 50, "-r" => Dates.datetime2epochms(now()), "-p" => "ai_curated.jl")
 
 function parse_cmdline()
     while !isempty(ARGS)
@@ -67,10 +63,27 @@ end
 parse_cmdline()
 
 include("types.jl")
-include("genes.jl")
-include("chromosome_data.jl")
-include("chromosome_operations.jl")
+include("util.jl")
+for file in filter(x -> endswith(x, ".jl"), readdir("operations"))
+    include("operations/$file")
+end
+include("""parameters/$(options["-p"])""")
 include("reporting.jl")
+
+const op_psum = check_op_psum(ops)
+
+function chromosome_mutation(cell::Cell)
+    r = rand() * op_psum
+    for (p, op) in ops
+        if(r < p)
+            (c, k, data) = op(cell)
+            ml = copy(cell.mutation_list)
+            push!(ml, Mutation(op, data))
+            return Cell(c, k, ml)
+        end
+        r -= p
+    end
+end
 
 function cell_division(cell::Cell)
     # Assume we start with CIN, so chromosomal event probability u = 10^-2 per
@@ -147,7 +160,7 @@ end
 
 function get_centromere_pos(chr)
     ppos = 0
-    for (pos, loc) in hg38_cytobands[chr]
+    for (pos, loc) in ref_cytobands[chr]
         if(loc[1] == 'q')
             return ppos
         end
@@ -159,12 +172,12 @@ function get_clean_cell(driver_genes)
     chromosomes = Array{Chromosome, 1}(0)
     for i in 1:22
         cpos = get_centromere_pos("$i")
-        push!(chromosomes, Chromosome(hg38_chromosome_sizes["$i"], cpos, driver_genes["$i"]))
-        push!(chromosomes, Chromosome(hg38_chromosome_sizes["$i"], cpos, driver_genes["$i"]))
+        push!(chromosomes, Chromosome(ref_chromosome_sizes["$i"], cpos, driver_genes["$i"]))
+        push!(chromosomes, Chromosome(ref_chromosome_sizes["$i"], cpos, driver_genes["$i"]))
     end
 
-    push!(chromosomes, Chromosome(hg38_chromosome_sizes["X"], get_centromere_pos("X"), driver_genes["X"]))
-    push!(chromosomes, Chromosome(hg38_chromosome_sizes["Y"], get_centromere_pos("Y"), driver_genes["Y"]))
+    push!(chromosomes, Chromosome(ref_chromosome_sizes["X"], get_centromere_pos("X"), driver_genes["X"]))
+    push!(chromosomes, Chromosome(ref_chromosome_sizes["Y"], get_centromere_pos("Y"), driver_genes["Y"]))
 
     # start with CIN and count it as a driver mutation
     return Cell(chromosomes, 1, [])
@@ -178,7 +191,7 @@ function generate_drivers()
     d["X"] = []
     d["Y"] = []
     # just take the middle of the gene as the gene position for now (never split genes in chromosome breakages)
-    for gene in hg38_driver_genes
+    for gene in driver_genes
         push!(d[gene.native_chromosome], Driver_Locus(floor((gene.native_startpos+gene.native_endpos)/2), gene))
     end
     return d
