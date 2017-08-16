@@ -1,24 +1,10 @@
-function write_bedgraph_file(chr_regions)
-    fname = options["-o"]
+function write_bedgraph_file(fname, chr_regions)
     open(fname, "w") do f
-        if haskey(options, "--std-bed")
-            for chr in sort(collect(keys(chr_regions)))
-                for r in chr_regions[chr]
-                    write(f, "$chr\t$(r[1])\t$(r[2])\t$(r[3])\n")
-                end
-            end
-        else
-            for chr in sort(collect(keys(chr_regions)))
-                for r in chr_regions[chr]
-                    write(f, "$chr\t$(r[1])\t$(r[2])\t$(r[3])\t$(r[4])\t$(r[5])\n")
-                end
+        for chr in sort(collect(keys(chr_regions)))
+            for r in chr_regions[chr]
+                write(f, "$chr\t$(r[1])\t$(r[2])\t$(r[3])\n")
             end
         end
-    end
-    if haskey(options, "-b")
-        println("""Wrote BedGraph file to '$fname' and Bed files for each iteration to '$(options["-b"])'""")
-    else
-        println("Wrote BedGraph file to '$fname'")
     end
 end
 
@@ -94,15 +80,7 @@ function add_seg!(regions, seg_start, seg_end, p)
     push!(regions, (seg_start, seg_end, 1, p == 'f' ? 1 : 0, p == 'm' ? 1 : 0))
 end
 
-function get_region_name(chr, position)
-    for (pos, loc) in ref_cytobands[chr]
-        if(pos >= position)
-            return loc
-        end
-    end
-end
-
-function add_segments_to_chr_regions(segments, chr_regions)
+function add_segments_to_region_array(segments, chr_regions)
     idx = 1
     for chr in segments
         for seg in chr
@@ -113,10 +91,30 @@ function add_segments_to_chr_regions(segments, chr_regions)
             else
                 chr_regions["$c"] = [(seg[2], seg[3], 1, parent == 'f' ? 1 : 0, parent == 'm' ? 1 : 0)]
             end
-            b = get_region_name(c, seg[2])
-            e = get_region_name(c, seg[3])
         end
         idx += 1
+    end
+end
+
+function add_segments_to_ai_arrays(segments, ai_gains, ai_losses)
+    chr_regions = Dict{String, Array{Tuple{Int, Int, Int, Int, Int}}}()
+    add_segments_to_region_array(segments, chr_regions)
+    for c in sort(collect(keys(chr_regions)))
+        for r in chr_regions[c]
+            if r[4] == 0 || r[5] == 0
+                if haskey(ai_losses, "$c")
+                    add_seg!(ai_losses["$c"], r[1], r[2], 'a')
+                else
+                    ai_losses["$c"] = [(r[1], r[2], 1, 0, 0)]
+                end
+            elseif (r[4] > 1 || r[5] > 1) && r[4] != r[5]
+                if haskey(ai_gains, "$c")
+                    add_seg!(ai_gains["$c"], r[1], r[2], 'a')
+                else
+                    ai_gains["$c"] = [(r[1], r[2], 1, 0, 0)]
+                end
+            end
+        end
     end
 end
 
@@ -131,7 +129,7 @@ function get_segments_for_clean_cell()
     return segments
 end
 
-function print_cell(cell::Cell, chr_regions, iteration)
+function print_cell(cell::Cell, reporting_data)
     segments = get_segments_for_clean_cell()
     for m in cell.mutation_list
         # Dispatch to chromosomal operation -specific refseq segment generator function, which should alter the provided segment
@@ -139,7 +137,10 @@ function print_cell(cell::Cell, chr_regions, iteration)
         # that was performed. Second parameter contains any data that was returned by the mutation operation.
         m.op(segments, m.data)
     end
-    add_segments_to_chr_regions(segments, chr_regions)
+
+    (cumulative_regions, ai_gains, ai_losses, iteration) = reporting_data
+    add_segments_to_region_array(segments, cumulative_regions)
+    add_segments_to_ai_arrays(segments, ai_gains, ai_losses)
     if haskey(options, "-b")
         write_segments_to_bed_file(segments, iteration)
     end

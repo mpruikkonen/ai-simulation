@@ -15,29 +15,38 @@ Usage:
 
 Options:
   -h, --help            print this help
-  --std-bed             do not output parent-specific counts to Bed/BedGraph files
-  -s, --single          run single iteration of simulation from single cell, verbose output (old behavior, useful for debug)
-  -o, --output file     name of Bed/BedGraph output file (default: '$(options["-o"])')
-  -b, --bed-out dir     in addition to BedGraph, output individual Bed files for each simulation iteration to dir
+  -p, --param file      name of parameter file (default: '$(options["-p"])')
+  -g, --gains file      name of BedGraph AI gains output file (default: '$(options["-g"])')
+  -l, --losses file     name of BedGraph AI losses output file (default: '$(options["-l"])')
+  -c, --cumulative file name of BedGraph cumulative output file
+  -b, --bed-out dir     in addition to BedGraph files, output individual Bed files for each simulation iteration to dir
   -i, --iterations n    number of simulation iterations (default: '$(options["-i"])')
   -K, --k-iterations n  number of iterations to determine k limit for a simulation iteration (default: '$(options["-K"])')
   -k, --k-limit n       use precalculated k limit n as simulation stopping condition instead of determining it by simulation
   -r, --rng-seed n      use a specific rng seed (to replicate an earlier run)
+  -s, --single          run single iteration of simulation from single cell, verbose output (old behavior, useful for debug)
+      --parent-counts   output also parent-specific counts to single iteration output file
 """)
     quit()
 end
 
-options = Dict("-o" => "out.bedgraph", "-i" => 1000, "-K" => 50, "-r" => Dates.datetime2epochms(now()), "-p" => "ai_curated.jl")
+options = Dict("-g" => "ai_gains.bedgraph", "-l" => "ai_losses.bedgraph", "-i" => 1000, "-K" => 50, "-r" => Dates.datetime2epochms(now()), "-p" => "ai_curated.jl")
 
 function parse_cmdline()
     while !isempty(ARGS)
         a = shift!(ARGS)
-        if a == "--std-bed"
+        if a == "--parent-counts"
             options[a] = ""
         elseif (a == "--single" || a == "-s")
             options["-s"] = ""
-        elseif (a == "--output" || a == "-o") && !isempty(ARGS)
-            options["-o"] = shift!(ARGS)
+        elseif (a == "--param" || a == "-p") && !isempty(ARGS)
+            options["-p"] = shift!(ARGS)
+        elseif (a == "--gains" || a == "-g") && !isempty(ARGS)
+            options["-g"] = shift!(ARGS)
+        elseif (a == "--losses" || a == "-l") && !isempty(ARGS)
+            options["-l"] = shift!(ARGS)
+        elseif (a == "--cumulative" || a == "-c") && !isempty(ARGS)
+            options["-c"] = shift!(ARGS)
         elseif (a == "--bed-out" || a == "-b") && !isempty(ARGS)
             options["-b"] = shift!(ARGS)
         elseif a == "--iterations" || a == "-i" && !isempty(ARGS)
@@ -140,7 +149,7 @@ function simulate_klimit(pop::Population)
     return cell_count, max_k
 end
 
-function simulate(pop::Population, k_limit, chr_regions, iteration)
+function simulate(pop::Population, k_limit, reporting_data)
     i = 1
     max_k_idx = 1
     max_k = 1
@@ -154,7 +163,7 @@ function simulate(pop::Population, k_limit, chr_regions, iteration)
         max_k = pop.individuals[max_k_idx].k
         i += 1
     end
-    print_cell(pop.individuals[max_k_idx], chr_regions, iteration)
+    print_cell(pop.individuals[max_k_idx], reporting_data)
     return cell_count
 end
 
@@ -216,19 +225,30 @@ function get_avg_k(drivers)
 end
 
 function run_sim()
-    chr_regions = Dict{String, Array{Tuple{Int, Int, Int, Int, Int}}}()
+    cumulative_regions = Dict{String, Array{Tuple{Int, Int, Int, Int, Int}}}()
+    ai_gains = Dict{String, Array{Tuple{Int, Int, Int, Int, Int}}}()
+    ai_losses = Dict{String, Array{Tuple{Int, Int, Int, Int, Int}}}()
     drivers = generate_drivers()
     avg_k = haskey(options, "-k") ? options["-k"] : get_avg_k(drivers)
     iterations = options["-i"]
     i = 1
     while i < iterations
-        if simulate(Population([get_clean_cell(drivers)]), avg_k, chr_regions, i) > 0
+        if simulate(Population([get_clean_cell(drivers)]), avg_k, (cumulative_regions, ai_gains, ai_losses, i)) > 0
             print("\rIteration $i/$iterations")
             i += 1
         end
     end
     println("\rSimulated $iterations iterations up to a cell with fitness at least k = $avg_k")
-    write_bedgraph_file(chr_regions)
+    write_bedgraph_file(options["-g"], ai_gains)
+    write_bedgraph_file(options["-l"], ai_losses)
+    println("""Wrote allelic imbalance gains and losses to '$(options["-g"])' and '$(options["-l"])'""")
+    if haskey(options, "-c")
+        write_bedgraph_file(options["-c"], cumulative_regions)
+        println("""Wrote cumulative BedGraph file to '$(options["-c"])'""")
+    end
+    if haskey(options, "-b")
+        println("""Bed files for each simulation iteration written to '$(options["-b"])'""")
+    end
 end
 
 if haskey(options, "-s")

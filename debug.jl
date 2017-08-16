@@ -1,7 +1,7 @@
 function write_bed_file(chr_regions)
     fname = options["-o"]
     open(fname, "w") do f
-        if haskey(options, "--std-bed")
+        if !haskey(options, "--parent-counts")
             for chr in sort(collect(keys(chr_regions)))
                 for r in chr_regions[chr]
                     write(f, "chr$chr\t$(r[1])\t$(r[2])\t\t$(r[3])\n")
@@ -15,7 +15,15 @@ function write_bed_file(chr_regions)
             end
         end
     end
-    println("Wrote BED file to '$fname'")
+    println("Wrote Bed file to '$fname'")
+end
+
+function get_region_name(chr, position)
+    for (pos, loc) in ref_cytobands[chr]
+        if(pos >= position)
+            return loc
+        end
+    end
 end
 
 function print_chromosome_regions(segments)
